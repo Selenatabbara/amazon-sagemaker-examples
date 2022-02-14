@@ -4,8 +4,7 @@ import os
 import pandas as pd
 from glob import glob
 import argparse
-import boto3
-import botocore
+import logging
 
 os.system("du -a /opt/ml")
 
@@ -42,6 +41,9 @@ def create_dataframes(forecast_horizon, source_train_ts):
 
 
 if __name__ == "__main__":
+
+    logging.getLogger().setLevel(logging.INFO)
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--forecast_horizon", type=str)
     args = parser.parse_args()
@@ -69,9 +71,12 @@ if __name__ == "__main__":
         header=False,
         index=False,
     )
+    logging.info("Successfully saved the target dataset to .csv format")
+
 
     rts_df.to_csv(
         path_or_buf=DST_RELATED_TS,
         header=False,
         index=False,
     )
+    logging.info("Successfully saved the related time-series dataset to .csv format")
