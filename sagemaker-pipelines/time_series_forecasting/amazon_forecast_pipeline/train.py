@@ -6,8 +6,9 @@ import boto3
 from time import sleep
 import os
 import argparse
+import logging
 
-alogorithms_arn_dict = {
+algorithms_arn_dict = {
     "CNNQR": "arn:aws:forecast:::algorithm/CNN-QR",
     "NPTS": "arn:aws:forecast:::algorithm/NPTS",
     "DEEPAR": "arn:aws:forecast:::algorithm/Deep_AR_Plus",
@@ -67,7 +68,7 @@ def create_dataset_group_and_datasets(
         DatasetGroupName=dataset_group_name, Domain="CUSTOM"
     )
     dataset_group_arn = create_dataset_group_response["DatasetGroupArn"]
-    print(dataset_group_arn)
+    logging.info(f"Using Dataset group ARN: {dataset_group_arn}")
 
     # Create Target Dataset
     target_response = forecast.create_dataset(
@@ -78,7 +79,7 @@ def create_dataset_group_and_datasets(
         Schema=target_schema,
     )
     target_dataset_arn = target_response["DatasetArn"]
-    print(target_dataset_arn)
+    logging.info(f"Using target dataset ARN: {target_dataset_arn}")
 
     # Create Related Dataset
     if related_schema:
@@ -92,7 +93,7 @@ def create_dataset_group_and_datasets(
         related_dataset_arn = related_response["DatasetArn"]
     else:
         related_dataset_arn = None
-    print(related_dataset_arn)
+    logging.info(f"Using related time-series dataset ARN: {related_dataset_arn}")
 
     # Create Meta Dataset
     if meta_schema:
@@ -105,7 +106,7 @@ def create_dataset_group_and_datasets(
         meta_dataset_arn = meta_response["DatasetArn"]
     else:
         meta_dataset_arn = None
-    print(meta_dataset_arn)
+    logging.info(f"Using meta dataset ARN: {meta_dataset_arn}")
 
     # Attach the Dataset to the Dataset Group
     datasets_arns = [target_dataset_arn]
@@ -137,7 +138,8 @@ def check_import_status(forecast, import_job_arn):
         dataImportStatus = forecast.describe_dataset_import_job(
             DatasetImportJobArn=import_job_arn
         )["Status"]
-        print(dataImportStatus)
+        logging.info(f"Data Import Status: {dataImportStatus}")
+
         if dataImportStatus != "ACTIVE" and dataImportStatus != "CREATE_FAILED":
             sleep(30)
         else:
@@ -152,11 +154,12 @@ def check_training_status(forecast, forecast_arn_predictor):
        forecast_arn_predictor (str): the ARN of the Amazon Forecast predictor
     """
     for i in range(300):
-        data_import_status = forecast.describe_predictor(
+        predictor_status = forecast.describe_predictor(
             PredictorArn=forecast_arn_predictor
         )["Status"]
-        print(data_import_status)
-        if data_import_status != "ACTIVE" and data_import_status != "CREATE_FAILED":
+        logging.info(f"Forecast Predictor Status: {predictor_status}")
+
+        if predictor_status != "ACTIVE" and predictor_status != "CREATE_FAILED":
             sleep(60)
         else:
             break
@@ -194,7 +197,10 @@ def import_time_series_from_s3(
 
 
 if __name__ == "__main__":
-    print(boto3.__version__)
+
+    logging.getLogger().setLevel(logging.INFO)
+
+    logging.info(f"Using boto3 version {boto3.__version__}")
     # Parsing the required arguments for the training and evaluation job
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-dir", type=str, default=os.environ.get("SM_MODEL_DIR"))
@@ -224,7 +230,8 @@ if __name__ == "__main__":
     target_s3_data_path = os.path.join(args.s3_directory_target, "target.csv")
     related_s3_data_path = os.path.join(args.s3_directory_related, "related.csv")
 
-    print("Create Dataset group")
+    logging.info(f"Creating Dataset Group in Amazon Forecast")
+
     training_date = datetime.utcnow().strftime("%Y_%m_%d_%H_%M_%S_%f")[:-3]
     dataset_group_name = f"MLOPS_Pipeline_{training_date}"
 
@@ -243,7 +250,8 @@ if __name__ == "__main__":
         meta_schema,
     )
 
-    print("Import Target and Related TimeSeries from S3 to Forecast")
+    logging.info(f"Importing Target and Related Time-Series data from Amazon S3 to Amazon Forecast")
+
     target_import_job_arn = import_time_series_from_s3(
         forecast,
         dataset_group_name,
@@ -262,11 +270,11 @@ if __name__ == "__main__":
         timestamp_format,
     )
 
-    print("Train Predictor: ", forecast_algorithm)
+    logging.info(f"Train Predictor: {forecast_algorithm}")
     predictor_name = dataset_group_name + "_" + forecast_algorithm
     create_predictor_response = forecast.create_predictor(
         PredictorName=predictor_name,
-        AlgorithmArn=alogorithms_arn_dict[forecast_algorithm],
+        AlgorithmArn=algorithms_arn_dict[forecast_algorithm],
         ForecastHorizon=forecast_horizon,
         PerformAutoML=False,
         PerformHPO=False,
@@ -280,11 +288,12 @@ if __name__ == "__main__":
 
     forecast_arn_predictor = create_predictor_response["PredictorArn"]
 
-    print("Forecast Predictor ARN: ", forecast_arn_predictor)
+    logging.info(f"Forecast Predictor ARN: : {forecast_arn_predictor}")
 
     check_training_status(forecast, forecast_arn_predictor)
 
-    print("Training completed \n Saving the resources ARN")
+
+    logging.info("Training completed \n Saving the resources ARN")
 
     forecast_details = {
         "dataset_group_arn": dataset_group_arn,
@@ -294,8 +303,8 @@ if __name__ == "__main__":
         "related_dataset_arn": related_dataset_arn,
         "related_import_job_arn": related_import_job_arn,
         "meta_dataset_arn": meta_dataset_arn,
-        "alogrithm_name": forecast_algorithm,
-        "alogorithms_arn_dict": alogorithms_arn_dict[forecast_algorithm],
+        "algorithm_name": forecast_algorithm,
+        "algorithms_arn_dict": algorithms_arn_dict[forecast_algorithm],
         "forecast_arn_predictor": forecast_arn_predictor,
         "role_arn": role_arn,
     }
@@ -303,7 +312,7 @@ if __name__ == "__main__":
     with open(os.path.join(args.model_dir, "model_parameters.json"), "w") as f:
         f.write(json.dumps(forecast_details))
 
-    print("Model Evaluation")
+    logging.info("Starting Model Evaluation")
     response = forecast.get_accuracy_metrics(PredictorArn=forecast_arn_predictor)
     evaluation_metrics = response["PredictorEvaluationResults"][0]["TestWindows"][0][
         "Metrics"

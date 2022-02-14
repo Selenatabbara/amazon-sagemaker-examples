@@ -1,16 +1,15 @@
 #!/usr/bin/env python
 
 import os
-from glob import glob
 import argparse
 import tarfile
 import botocore.exceptions
 import boto3
 import json
 import time
+import logging
 
 os.system("du -a /opt/ml")
-
 
 def wait_till_delete(callback, check_time=5, timeout=150):
     """Only move to the next line of code once a delete has successfully occurred.
@@ -28,7 +27,7 @@ def wait_till_delete(callback, check_time=5, timeout=150):
         except botocore.exceptions.ClientError as e:
             # When given the resource not found exception, deletion has occured
             if e.response["Error"]["Code"] == "ResourceNotFoundException":
-                print("Successful delete")
+                logging.info("Successful delete")
                 return
             else:
                 raise
@@ -73,16 +72,19 @@ def delete_forecast_attributes(forecast, model_params):
             )
         )
 
-    print("All attributes successfully deleted.")
+    logging.info("All attributes successfully deleted.")
 
 
 if __name__ == "__main__":
+    
+    logging.getLogger().setLevel(logging.INFO)
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--metric", type=str)
     parser.add_argument("--region", type=str)
     parser.add_argument("--maximum-score", type=float)
     args = parser.parse_args()
-    print(boto3.__version__)
+    logging.info(boto3.__version__)
 
     metric = args.metric
     region = args.region
@@ -92,7 +94,7 @@ if __name__ == "__main__":
     with tarfile.open(model_path) as tar:
         tar.extractall(path=".")
 
-    print("Loading jsons.")
+    logging.info("Loading jsons.")
     with open("evaluation_metrics.json", "r") as f:
         eval_metrics = json.load(f)
 
@@ -105,4 +107,4 @@ if __name__ == "__main__":
         delete_forecast_attributes(forecast, model_params)
 
     else:
-        print("Score is sufficient. Amazon Forecast resources will not be deleted.")
+        logging.info("Score is sufficient. Amazon Forecast resources will not be deleted.")
